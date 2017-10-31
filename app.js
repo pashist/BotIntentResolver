@@ -26,7 +26,7 @@ const intentDialog = bot.dialog('/', new builder.IntentDialog({ recognizers: [re
 
 console.log('loading actions...');
 buildActions().then(actions => {
-  console.log('actions loaded');
+  console.log('actions loaded:', actions.reduce((count, a) => count + Object.keys(a.schema).length, 0));
   LuisActions.bindToBotDialog(bot, intentDialog, LuisModelUrl, actions, {
     defaultReply: DefaultReplyHandler,
     fulfillReply: FulfillReplyHandler,
