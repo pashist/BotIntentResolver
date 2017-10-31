@@ -4,7 +4,8 @@ const builder = require('botbuilder');
 const restify = require('restify');
 
 const LuisActions = require('./core');
-const loadActions = require('./actions-loader');
+const { buildActions } = require('./actions');
+
 const LuisModelUrl = process.env.LUIS_MODEL_URL;
 
 const server = restify.createServer();
@@ -24,7 +25,7 @@ const intentDialog = bot.dialog('/', new builder.IntentDialog({ recognizers: [re
   .onDefault(DefaultReplyHandler));
 
 console.log('loading actions...');
-loadActions().then(actions => {
+buildActions().then(actions => {
   console.log('actions loaded');
   LuisActions.bindToBotDialog(bot, intentDialog, LuisModelUrl, actions, {
     defaultReply: DefaultReplyHandler,

@@ -343,6 +343,9 @@ function chooseBestIntentAction(intents, actions, currentAction) {
     return null;
   }
 
+  if (intent.score < 0.5) {
+    return null;
+  }
   return action;
 }
 
