@@ -1,9 +1,9 @@
-var _ = require('lodash');
-var util = require('util');
-var builder = require('botbuilder');
-var inspector = require('schema-inspector');
-var Promise = require('bluebird');
-var BuiltInTypes = require('./builtin');
+const _ = require('lodash');
+const util = require('util');
+const builder = require('botbuilder');
+const inspector = require('schema-inspector');
+const Promise = require('bluebird');
+const BuiltInTypes = require('./builtin');
 
 var Status = {
   NoActionRecognized: 'NoActionRecognized',
@@ -203,7 +203,12 @@ function bindToBotDialog(bot, intentDialog, modelUrl, actions, options) {
 
   // Register each LuisActions with the intentDialog
   _.forEach(actions, function (action) {
-    intentDialog.matches(action.intentName, createBotAction(action, modelUrl));
+    try {
+      intentDialog.matches(action.intentName, createBotAction(action, modelUrl));
+    } catch (e) {
+      //
+    }
+
   });
 }
 
@@ -449,8 +454,8 @@ function validate(schema, parameters, onValidationErrors, onValidationPass) {
   } else {
     var errors = result.error.map(function (fieldError) {
       var parameterName = getParameterName(fieldError);
-      console.log('parameterName', parameterName);
       var errorMessage = schema[parameterName].message;
+
       return {
         parameterName: parameterName,
         message: errorMessage

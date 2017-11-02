@@ -21,20 +21,40 @@ server.post('/api/messages', connector.listen());
 
 const bot = new builder.UniversalBot(connector);
 const recognizer = new builder.LuisRecognizer(LuisModelUrl);
-const intentDialog = bot.dialog('/', new builder.IntentDialog({ recognizers: [recognizer] })
+const intentDialog = bot
+  .dialog('/', new builder.IntentDialog({ recognizers: [recognizer] })
   .onDefault(DefaultReplyHandler));
 
-console.log('loading actions...');
-buildActions().then(actions => {
-  console.log('actions loaded:', actions.reduce((count, a) => count + Object.keys(a.schema).length, 0));
-  LuisActions.bindToBotDialog(bot, intentDialog, LuisModelUrl, actions, {
-    defaultReply: DefaultReplyHandler,
-    fulfillReply: FulfillReplyHandler,
-    onContextCreation: onContextCreationHandler
-  });
-}).catch(err => {
-  console.log('actions loading failed:', err.message);
+bot.dialog('reloadActions', (session, args, next) => {
+  session.send('Loading actions...');
+  initActions().then(msg => session.endDialog(msg));
+}).triggerAction({
+  matches: /^reload actions$/i,
+  onSelectAction: (session, args, next) => {
+    // Add the help dialog to the top of the dialog stack
+    // (override the default behavior of replacing the stack)
+    session.beginDialog(args.action, args);
+  }
 });
+
+function initActions() {
+  console.log('loading actions...');
+  return buildActions()
+    .then(actions => {
+      const num = actions.reduce((count, a) => count + Object.keys(a.schema).length, 0);
+      console.log('actions loaded:', num);
+      LuisActions.bindToBotDialog(bot, intentDialog, LuisModelUrl, actions, {
+        defaultReply: DefaultReplyHandler,
+        fulfillReply: FulfillReplyHandler,
+        onContextCreation: onContextCreationHandler
+      });
+      return `Loaded ${num} actions`;
+    })
+    .catch(err => {
+      console.log('actions loading failed:', err.message);
+      return err.message;
+    });
+}
 
 function DefaultReplyHandler(session) {
   session.endDialog(
@@ -80,3 +100,5 @@ function onContextCreationHandler(action, actionModel, next, session) {
 
   next();
 }
+
+initActions();

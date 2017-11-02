@@ -1,4 +1,5 @@
 const { GraphQLClient } = require('graphql-request');
+const isEmpty = require('lodash/isEmpty');
 
 require('dotenv-extended').load({ path: './.env' });
 
@@ -40,9 +41,10 @@ function createSchemaFromParams(params = []) {
     if (!entityName || !param.required) {
       return;
     }
+    const message = isEmpty(param.prompts) ? [`Please provide the ${param.name}`] : param.prompts;
     schema[entityName] = {
       type: 'string',
-      message: param.prompts[0] || `Please provide the ${param.name}`
+      message
     }
   });
 
