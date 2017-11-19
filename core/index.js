@@ -4,6 +4,10 @@ const builder = require('botbuilder');
 const inspector = require('schema-inspector');
 const Promise = require('bluebird');
 const BuiltInTypes = require('./builtin');
+const EntityResolver = require('./EntityResolver');
+const agent = require('./Agent');
+
+const entityResolver = new EntityResolver({agent});
 
 var Status = {
   NoActionRecognized: 'NoActionRecognized',
@@ -68,6 +72,9 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
       case Status.NoActionRecognized:
         // First time input, resolve to action
         builder.LuisRecognizer.recognize(actionModel.userInput, modelUrl, (err, intents, entities) => {
+
+          console.log('USER INPUT>>>>', actionModel.userInput);
+
           if (err) {
             return reject(err);
           }
@@ -113,56 +120,67 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
 
         if (actionModel.userInput) {
           // Filling for a missing parameter
-          builder.LuisRecognizer.recognize(actionModel.userInput, modelUrl, (err, intents, entities) => {
-            if (err) {
-              return reject(err);
+
+          entityResolver.recognizeFromInput(actionModel.userInput).then(foundEntities => {
+            if (!_.isEmpty(foundEntities)) {
+              const parameters = extractParametersFromEntities(action.schema, foundEntities, actionModel);
+              actionModel.parameters = _.merge({}, actionModel.parameters, parameters);
+              tryExecute(action, actionModel).then(resolve).catch(reject);
+            } else {
+              builder.LuisRecognizer.recognize(actionModel.userInput, modelUrl, (err, intents, entities) => {
+                console.log('USER INPUT 2 >>>>', actionModel.userInput, intents);
+                if (err) {
+                  return reject(err);
+                }
+
+                var newAction = chooseBestIntentAction(intents, actions, action);
+                if (newAction && newAction.intentName !== action.intentName) {
+                  if (isGetterAction(newAction)) {
+
+                  } else if (newAction.parentAction === action) {
+                    // context action (sub action), replace action & model and continue
+                    actionModel = _.merge({}, EmptyActionModel, {
+                      contextModel: actionModel,
+                      intentName: newAction.intentName
+                    });
+                    actionModel.parameters = [];
+                    action = newAction;
+
+                  } else if (equalsTrue(action.confirmOnContextSwitch, true)) {
+
+                    // new context switch
+                    actionModel.status = Status.ContextSwitch;
+                    actionModel.contextSwitchData = {
+                      intentName: newAction.intentName,
+                      parameters: extractParametersFromEntities(newAction.schema, entities)
+                    };
+
+                    // prompt
+                    var currentActionName = action.friendlyName || action.intentName;
+                    var newActionName = newAction.friendlyName || newAction.intentName;
+                    actionModel.contextSwitchPrompt = util.format('Do you want to discard the current action \'%s\' and start the with \'%s\' action?', currentActionName, newActionName);
+
+                    // return and wait for context switch confirmation
+                    return resolve(actionModel);
+
+                  } else {
+                    // switch to new context and continue with evaluation
+                    action = newAction;
+                    actionModel.intentName = newAction.intentName;
+                    actionModel.currentParameter = null;
+                  }
+                }
+                const parameters = extractParametersFromEntities(action.schema, foundEntities, actionModel);
+
+                // merge new identified parameters from entites
+                actionModel.parameters = _.merge({}, actionModel.parameters, parameters);
+
+                // Run validation
+                tryExecute(action, actionModel)
+                  .then(resolve)
+                  .catch(reject);
+              });
             }
-
-            var newAction = chooseBestIntentAction(intents, actions, action);
-            if (newAction && newAction.intentName !== action.intentName) {
-              if (newAction.parentAction === action) {
-                // context action (sub action), replace action & model and continue
-                actionModel = _.merge({}, EmptyActionModel, {
-                  contextModel: actionModel,
-                  intentName: newAction.intentName
-                });
-                actionModel.parameters = [];
-                action = newAction;
-
-              } else if (equalsTrue(action.confirmOnContextSwitch, true)) {
-
-                // new context switch
-                actionModel.status = Status.ContextSwitch;
-                actionModel.contextSwitchData = {
-                  intentName: newAction.intentName,
-                  parameters: extractParametersFromEntities(newAction.schema, entities)
-                };
-
-                // prompt
-                var currentActionName = action.friendlyName || action.intentName;
-                var newActionName = newAction.friendlyName || newAction.intentName;
-                actionModel.contextSwitchPrompt = util.format('Do you want to discard the current action \'%s\' and start the with \'%s\' action?', currentActionName, newActionName);
-
-                // return and wait for context switch confirmation
-                return resolve(actionModel);
-
-              } else {
-                // switch to new context and continue with evaluation
-                action = newAction;
-                actionModel.intentName = newAction.intentName;
-                actionModel.currentParameter = null;
-              }
-            }
-
-            var parameters = extractParametersFromEntities(action.schema, entities, actionModel);
-
-            // merge new identified parameters from entites
-            actionModel.parameters = _.merge({}, actionModel.parameters, parameters);
-
-            // Run validation
-            tryExecute(action, actionModel)
-              .then(resolve)
-              .catch(reject);
           });
         } else {
           // Run validation with current model
@@ -348,7 +366,10 @@ function chooseBestIntentAction(intents, actions, currentAction) {
     return null;
   }
 
-  if (intent.score < 0.5) {
+  if (currentAction && intent.score < 0.5) {
+    return null;
+  }
+  if (intent.intent === 'None') {
     return null;
   }
   return action;
@@ -552,4 +573,8 @@ function validateAction(action) {
   if (typeof action.fulfill !== 'function') {
     throw new Error('actionModel.fulfill should be a function');
   }
+}
+
+function isGetterAction(action) {
+  return !!_.get(action, 'intentName', '').match(/^get/);
 }
