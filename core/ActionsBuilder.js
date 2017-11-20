@@ -1,5 +1,5 @@
-const builder = require('botbuilder');
 const isEmpty = require('lodash/isEmpty');
+const ResponsePicker = require('./Responses');
 
 require('dotenv-extended').load({ path: '../.env' });
 
@@ -18,8 +18,14 @@ class ActionsBuilder {
         confirmOnContextSwitch: true,
         schema: this.createSchemaFromParams(intent.parameters),
         fulfill: (parameters, callback) => {
-          const paramStr = Object.keys(parameters).map(key => `${key}: ${parameters[key]}`).join(',');
-          callback(`Intent ${intent.name} resolved with params: ${paramStr}`)
+          const responsePicker = new ResponsePicker({agent: this.agent, intentName: intent.name, parameters});
+          const response = responsePicker.pick();
+          if (response) {
+            callback(response);
+          } else {
+            const paramStr = Object.keys(parameters).map(key => `${key}: ${parameters[key]}`).join(',');
+            callback(`Intent ${intent.name} resolved with params: ${paramStr}`)
+          }
         }
       })
     });

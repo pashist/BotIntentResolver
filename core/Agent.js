@@ -1,4 +1,3 @@
-const builder = require('botbuilder');
 const { GraphQLClient } = require('graphql-request');
 const get = require('lodash/get');
 
@@ -20,6 +19,7 @@ class Agent {
           helperModelIds
           intents {
             id name parameters { name value required prompts dataType }
+            responses { speech }
           }
         }
       }`);
