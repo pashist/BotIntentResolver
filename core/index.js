@@ -1,5 +1,6 @@
 const _ = require('lodash');
 const util = require('util');
+const log = require('debug')('RESOLVER:CORE');
 const builder = require('botbuilder');
 const inspector = require('schema-inspector');
 const Promise = require('bluebird');
@@ -37,6 +38,7 @@ var EmptyActionModel = {
 };
 
 function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCreationHandler) {
+  log('evaluate action');
   if (!modelUrl) {
     throw new Error('modelUrl not set');
   }
@@ -46,6 +48,7 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
   onContextCreationHandler = validateContextCreationHandler(onContextCreationHandler);
 
   return new Promise(function (resolve, reject) {
+    log('fill action model');
     var actionModel = _.merge({}, EmptyActionModel, currentActionModel);
 
     if (actionModel.status === Status.ContextSwitch) {
@@ -67,21 +70,22 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
 
     // cleanup from previous runs
     delete actionModel.subcontextResult;
-
+    log('action model is:', actionModel);
     switch (actionModel.status) {
       case Status.NoActionRecognized:
         // First time input, resolve to action
+        log('recognize user input', actionModel.userInput);
         builder.LuisRecognizer.recognize(actionModel.userInput, modelUrl, (err, intents, entities) => {
 
-          console.log('USER INPUT>>>>', actionModel.userInput);
-
           if (err) {
+            log('recognize error %s', err);
             return reject(err);
           }
-
+          log('recognize success');
           var action = chooseBestIntentAction(intents, actions);
           if (action) {
             // Populate action parameters with LUIS entities
+            log('Populate action parameters with LUIS entities');
             actionModel.intentName = action.intentName;
             // Contextual action? Populate with root action
             if (action.parentAction && !actionModel.contextModel) {
@@ -108,6 +112,7 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
 
           } else {
             // No action recognized
+            log('No action recognized');
             actionModel.status = Status.NoActionRecognized;
             resolve(actionModel);
           }
@@ -116,25 +121,32 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
 
       case Status.MissingParameters:
       case Status.ContextSwitch:
+        log('find action for intent from action model');
         var action = _.find(actions, function (action) { return actionModel.intentName === action.intentName; });
 
         if (actionModel.userInput) {
           // Filling for a missing parameter
-
+          log('user input exists');
+          log('call entity resolver');
           entityResolver.recognizeFromInput(actionModel.userInput).then(foundEntities => {
             if (!_.isEmpty(foundEntities)) {
               const parameters = extractParametersFromEntities(action.schema, foundEntities, actionModel);
               actionModel.parameters = _.merge({}, actionModel.parameters, parameters);
               tryExecute(action, actionModel).then(resolve).catch(reject);
             } else {
+              log('no entities resolved, call main recognizer');
               builder.LuisRecognizer.recognize(actionModel.userInput, modelUrl, (err, intents, entities) => {
-                console.log('USER INPUT 2 >>>>', actionModel.userInput, intents);
+                log('recognized intents:', intents);
+                log('recognized entities:', entities);
                 if (err) {
+                  log('recognize error');
                   return reject(err);
                 }
 
                 var newAction = chooseBestIntentAction(intents, actions, action);
+
                 if (newAction && newAction.intentName !== action.intentName) {
+                  log('new action is different from current');
                   if (isGetterAction(newAction)) {
 
                   } else if (newAction.parentAction === action) {
@@ -147,7 +159,7 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
                     action = newAction;
 
                   } else if (equalsTrue(action.confirmOnContextSwitch, true)) {
-
+                    log('change action model to switch to new action');
                     // new context switch
                     actionModel.status = Status.ContextSwitch;
                     actionModel.contextSwitchData = {
@@ -161,9 +173,11 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
                     actionModel.contextSwitchPrompt = util.format('Do you want to discard the current action \'%s\' and start the with \'%s\' action?', currentActionName, newActionName);
 
                     // return and wait for context switch confirmation
+                    log('return and wait for context switch confirmation');
                     return resolve(actionModel);
 
                   } else {
+                    log('switch to new context and continue with evaluation');
                     // switch to new context and continue with evaluation
                     action = newAction;
                     actionModel.intentName = newAction.intentName;
@@ -173,6 +187,7 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
                 const parameters = extractParametersFromEntities(action.schema, foundEntities, actionModel);
 
                 // merge new identified parameters from entites
+                log('merge new identified parameters from entites');
                 actionModel.parameters = _.merge({}, actionModel.parameters, parameters);
 
                 // Run validation
@@ -200,6 +215,7 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
  * Bot Stuff
  */
 function bindToBotDialog(bot, intentDialog, modelUrl, actions, options) {
+  log('binding actions to bot dialog');
   if (!bot) {
     throw new Error('bot is required');
   }
@@ -220,6 +236,7 @@ function bindToBotDialog(bot, intentDialog, modelUrl, actions, options) {
   bot.library(createBotLibrary(modelUrl, actions, options));
 
   // Register each LuisActions with the intentDialog
+  log('register actions');
   _.forEach(actions, function (action) {
     try {
       intentDialog.matches(action.intentName, createBotAction(action, modelUrl));
@@ -237,16 +254,18 @@ function createBotLibrary(modelUrl, actions, options) {
 
   var lib = new builder.Library('LuisActions');
   lib.dialog('Evaluate', new builder.SimpleDialog(function (session, args) {
-
+    log('start new conversation');
     var actionModel = null;
     var action = null;
     if (args && args.intents) {
+      log('recognized intents:', args.intents);
       // Coming from a matched intent
       action = chooseBestIntentAction(args.intents, actions);
       if (!action) {
+        log('no action found');
         return defaultReplyHandler(session);
       }
-
+      log('initialize empty action model');
       actionModel = _.merge({}, EmptyActionModel, {
         intentName: action.intentName
       });
@@ -271,29 +290,38 @@ function createBotLibrary(modelUrl, actions, options) {
     next();
 
     function next() {
+      log('call dialog next function');
       if (!actionModel) {
+        log('no action model exists');
         return defaultReplyHandler(session);
       }
-
+      log('find action by intent name from action model');
       action = actions.find(a => a.intentName === actionModel.intentName);
+
       if (!action) {
+        log('no action found');
         return defaultReplyHandler(session);
       }
 
+      log('choosing operation');
       var operation = null;
 
       if (actionModel.status === Status.ContextSwitch && args.response === true) {
         // confirming context switch
+        log('switch context confirmed');
         actionModel.confirmSwitch = true;
         operation = evaluate(modelUrl, actions, actionModel);
       } else if (args && args.response && actionModel.currentParameter) {
         // try evaluate new parameter
+        log('try evaluate new parameter');
         operation = evaluate(modelUrl, actions, actionModel, args.response);
       } else {
+        log('try validate with current parameters');
         // try validate with current parameters
         operation = tryExecute(action, actionModel);
       }
 
+      log('executing async operation');
       operation.then(actionModel => {
 
         session.privateConversationData['luisaction.model'] = actionModel;
@@ -301,17 +329,17 @@ function createBotLibrary(modelUrl, actions, options) {
         if (actionModel.subcontextResult) {
           session.send(actionModel.subcontextResult.toString());
         }
-
+        log('action model status is %s', actionModel.status);
         switch (actionModel.status) {
           case Status.MissingParameters:
             // Prompt for first missing parameter
             var errors = actionModel.parameterErrors;
             var firstError = _.first(errors);
-
+            log('set current parameter %s', firstError.parameterName);
             // set current parameter name to help recognizer which parameter to match
             actionModel.currentParameter = firstError.parameterName;
             session.privateConversationData['luisaction.model'] = actionModel;
-
+            log('prompt user for parameter %s', actionModel.currentParameter);
             builder.Prompts.text(session, firstError.message);
             break;
 
@@ -319,6 +347,7 @@ function createBotLibrary(modelUrl, actions, options) {
             // Prompt for context switch
             var prompt = actionModel.contextSwitchPrompt;
             session.privateConversationData['luisaction.model'] = actionModel;
+            log('prompt user for switching to other intent: %s', prompt);
             builder.Prompts.confirm(session, prompt, { listStyle: builder.ListStyle.button });
             break;
 
@@ -326,12 +355,14 @@ function createBotLibrary(modelUrl, actions, options) {
             // Action fulfilled
             // TODO: Allow external handler
             delete session.privateConversationData['luisaction.model'];
+            log('handle action fulfilled');
             fulfillReplyHandler(session, actionModel);
             break;
 
         }
       }).catch((err) => {
         // error ocurred
+        log('handle dialog error %s', err);
         session.endDialog('Error: %s', err);
       });
     }
@@ -353,6 +384,7 @@ function createBotAction(action, modelUrl) {
  * Helpers
  */
 function chooseBestIntentAction(intents, actions, currentAction) {
+  log('choose best intent action');
   var intent = _.maxBy(intents, function (intent) { return intent.score; });
   var action = _.find(actions, function (action) { return intent && intent.intent === action.intentName; });
 
@@ -367,16 +399,19 @@ function chooseBestIntentAction(intents, actions, currentAction) {
   }
 
   if (currentAction && intent.score < 0.5) {
+    log('intent score %s - ignored', intent.score);
     return null;
   }
   if (intent.intent === 'None') {
+    log('None intent - ignored');
     return null;
   }
+  log('action selected:', action.intentName);
   return action;
 }
 
 function extractParametersFromEntities(schema, entities, actionModel) {
-
+  log('extracting parameters from entities', entities);
   // when evaluating a specific parameter, try matching it by its custom type, then name and finally builin type
   if (actionModel && actionModel.currentParameter && schema[actionModel.currentParameter]) {
     var currentParameterSchema = schema[actionModel.currentParameter];
@@ -399,6 +434,7 @@ function extractParametersFromEntities(schema, entities, actionModel) {
 
     // if no entity recognized then try to assign user's input
     if (!entity) {
+      log('no entity recognized - assign user\'s input:', actionModel.userInput);
       entity = { entity: actionModel.userInput };
     }
 
@@ -423,21 +459,24 @@ function extractParametersFromEntities(schema, entities, actionModel) {
     var invalidParameterNames = result.error.map(getParameterName);
     parameters = _.omit(parameters, invalidParameterNames);
   }
-
+  log('resolved params:', parameters);
   return parameters;
 }
 
 function tryExecute(action, actionModel) {
+  log('trying to validate and execute action');
   return new Promise(function (resolve, reject) {
     try {
       validate(action.schema, actionModel.parameters,
         (parameters, errors) => {
+          log('params missing or invalid:', actionModel.parameters);
           actionModel.status = Status.MissingParameters;
           actionModel.parameters = parameters;
           actionModel.parameterErrors = errors;
           resolve(actionModel);
         },
         (completeParameters) => {
+          log('all params resolved');
           // fulfill and return response to callback
           var parentContext = actionModel.contextModel;
           action.fulfill(completeParameters, (fulfillResult) => {
@@ -467,6 +506,7 @@ function tryExecute(action, actionModel) {
 }
 
 function validate(schema, parameters, onValidationErrors, onValidationPass) {
+  log('validate action schema');
   var schemaObject = wrap(schema);
   inspector.sanitize(schemaObject, parameters);
   var result = inspector.validate(schemaObject, parameters);
@@ -558,6 +598,7 @@ function validateContextCreationHandler(callback) {
 }
 
 function validateAction(action) {
+  log('validate action %s', action.intentName);
   if (typeof action.intentName !== 'string') {
     throw new Error('actionModel.intentName requires a string');
   }

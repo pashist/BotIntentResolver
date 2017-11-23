@@ -1,5 +1,4 @@
-const builder = require('botbuilder');
-const isEmpty = require('lodash/isEmpty');
+const log = require('debug')('RESOLVER:RESPONSE_PICKER');
 const get = require('lodash/get');
 const maxBy = require('lodash/maxBy');
 const minBy = require('lodash/maxBy');
@@ -9,18 +8,20 @@ require('dotenv-extended').load({ path: '../.env' });
 
 class ResponsePicker {
   constructor({agent, intentName, parameters}) {
+    log('create instance');
     this.agent = agent;
     this.intentName = intentName || '';
     this.parameters = parameters || {};
   }
 
   pick() {
+    log('call pick method');
     const responses = this.getResponses()
       .map(response => this.fillParameters(response));
-    console.log('ResponsePicker.pick', responses);
     const bestMatches = this.findBestMatch(responses);
-
-    return get(sample(bestMatches), 'result');
+    const result = get(sample(bestMatches), 'result');
+    log('pick result:', result);
+    return result;
   }
 
   findBestMatch(responses) {
@@ -54,8 +55,9 @@ class ResponsePicker {
   }
 
   getResponses() {
-    return get(this.getIntent(), ['responses'], [])
-      .reduce((acc, curr) => acc.concat(curr.speech), []);
+    log('call getResponses');
+    const result = get(this.getIntent(), ['responses'], []).reduce((acc, curr) => acc.concat(curr.speech), []);
+    return result;
   }
 
   getIntent() {

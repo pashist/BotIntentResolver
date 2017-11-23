@@ -1,4 +1,5 @@
 const isEmpty = require('lodash/isEmpty');
+const log = require('debug')('RESOLVER:ACTION_BUILDER');
 const ResponsePicker = require('./Responses');
 
 require('dotenv-extended').load({ path: '../.env' });
@@ -9,6 +10,7 @@ class ActionsBuilder {
   }
 
   async build() {
+    log('building actions');
     const actions = [];
 
     this.agent.get('intents').forEach(intent => {
@@ -29,7 +31,7 @@ class ActionsBuilder {
         }
       })
     });
-
+    log('actions build success');
     return actions;
   }
 

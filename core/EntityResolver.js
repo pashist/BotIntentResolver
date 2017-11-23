@@ -1,5 +1,6 @@
 const builder = require('botbuilder');
 const isEmpty = require('lodash/isEmpty');
+const log = require('debug')('RESOLVER:ENTITY_RESOLVER');
 
 require('dotenv-extended').load({ path: '../.env' });
 
@@ -8,12 +9,13 @@ class EntityResolver {
     this.agent = agent;
   }
   async recognizeFromInput(input) {
+    log('recognize user input:', input);
     const modelIds = this.agent.get('helperModelIds');
+    log('using model ids:', modelIds);
     if (!isEmpty(modelIds)) {
       const promises = modelIds.map(modelId => {
         const modelUrl = this.buildModelUrl(modelId);
         return new Promise(resolve => {
-          console.log('EntityRecognizer.recognizeFromInput.....................', input, modelUrl);
           builder.LuisRecognizer.recognize(input, modelUrl, (error, intents, entities) => {
             if (error) {
               resolve({error});
@@ -23,9 +25,10 @@ class EntityResolver {
         });
       });
       const results = await Promise.all(promises);
-      console.log('EntityRecognizer.recognizeFromInput......................', results);
       const entities = results.reduce((acc, result) => result.error ? acc : acc.concat(result.entities), []);
-      return this.getTopScoredEntities(entities);
+      const result = this.getTopScoredEntities(entities);
+      log('result:', result);
+      return result;
     }
     return null;
   }

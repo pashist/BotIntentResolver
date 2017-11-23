@@ -2,15 +2,17 @@ require('dotenv-extended').load({ path: './.env' });
 
 const builder = require('botbuilder');
 const restify = require('restify');
-
+const log = require('debug')('RESOLVER:APP');
 const LuisActions = require('./core');
 const ActionsBuilder = require('./core/ActionsBuilder');
 const agent =  require('./core/Agent');
 
+log('creating server');
 const server = restify.createServer();
+log('starting %s server', server.name);
 server.listen(process.env.port || process.env.PORT || 3978, function () {
-  console.log('%s listening to %s', server.name, server.url);
-  init().then(() => console.log('Bot initialized')).catch(err => console.log(err));
+  log('%s listening to %s', server.name, server.url);
+  init().then(() => log('bot initialized')).catch(err => log(err));
 });
 
 const connector = new builder.ChatConnector({
@@ -20,6 +22,7 @@ const connector = new builder.ChatConnector({
 server.post('/api/messages', connector.listen());
 
 async function init() {
+  log('initializing bot');
   const actionsBuilder = new ActionsBuilder({agent});
   await agent.load();
   const bot = new builder.UniversalBot(connector);
@@ -30,11 +33,11 @@ async function init() {
       .onDefault(DefaultReplyHandler));
 
   const initActions = () => {
-    console.log('loading actions...');
+    log('initializing actions');
     return actionsBuilder.build()
       .then(actions => {
         const num = actions.reduce((count, a) => count + Object.keys(a.schema).length, 0);
-        console.log('actions loaded:', num);
+        log('actions loaded:', num);
         LuisActions.bindToBotDialog(bot, intentDialog, LuisModelUrl, actions, {
           defaultReply: DefaultReplyHandler,
           fulfillReply: FulfillReplyHandler,
@@ -43,11 +46,12 @@ async function init() {
         return `Loaded ${num} actions`;
       })
       .catch(err => {
-        console.log('actions loading failed:', err);
+        log('actions initializing failed:', err);
         return err.message;
       });
   };
   initActions();
+  log('add `reloadActions` dialog')
   bot.dialog('reloadActions', (session, args, next) => {
     session.send('Loading actions...');
     agent.load(true).then(() => {
@@ -61,17 +65,20 @@ async function init() {
       session.beginDialog(args.action, args);
     }
   });
+  log('`reloadActions` dialog added')
 }
 
 
 function DefaultReplyHandler(session) {
+  log('call DefaultReplyHandler');
   session.endDialog(
     'Sorry, I did not understand "%s".',
     session.message.text);
 }
 
 function FulfillReplyHandler(session, actionModel) {
-  console.log('Action Binding "' + actionModel.intentName + '" completed:', actionModel);
+  log('call FulfillReplyHandler');
+  log('Action Binding "' + actionModel.intentName + '" completed:', actionModel);
   session.endDialog(actionModel.result.toString());
 }
 
@@ -94,17 +101,17 @@ function onContextCreationHandler(action, actionModel, next, session) {
   // you could identify the user if the session.message.user.id is somehow mapped to a userId in your domain
 
   // NOTE: Remember to call next() to continue executing the action binding's logic
-
-  if (action.intentName === 'FindHotels') {
-    if (!actionModel.parameters.Checkin) {
-      actionModel.parameters.Checkin = new Date();
-    }
-
-    if (!actionModel.parameters.Checkout) {
-      actionModel.parameters.Checkout = new Date();
-      actionModel.parameters.Checkout.setDate(actionModel.parameters.Checkout.getDate() + 1);
-    }
-  }
+  //
+  // if (action.intentName === 'FindHotels') {
+  //   if (!actionModel.parameters.Checkin) {
+  //     actionModel.parameters.Checkin = new Date();
+  //   }
+  //
+  //   if (!actionModel.parameters.Checkout) {
+  //     actionModel.parameters.Checkout = new Date();
+  //     actionModel.parameters.Checkout.setDate(actionModel.parameters.Checkout.getDate() + 1);
+  //   }
+  // }
 
   next();
 }
