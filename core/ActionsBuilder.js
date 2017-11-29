@@ -13,14 +13,18 @@ class ActionsBuilder {
     log('building actions');
     const actions = [];
 
-    this.agent.get('intents').forEach(intent => {
+    this.getIntents().forEach(intent => {
       actions.push({
         intentName: intent.name,
         friendlyName: intent.name,
         confirmOnContextSwitch: true,
         schema: this.createSchemaFromParams(intent.parameters),
         fulfill: (parameters, callback) => {
-          const responsePicker = new ResponsePicker({agent: this.agent, intentName: intent.name, parameters});
+          const responsePicker = new ResponsePicker({
+            agent: intent.agent || this.agent,
+            intentName: intent.name,
+            parameters
+          });
           const response = responsePicker.pick();
           if (response) {
             callback(response);
@@ -51,6 +55,18 @@ class ActionsBuilder {
     });
 
     return schema;
+  }
+
+  getIntents() {
+    const intents = this.agent.get('intents');
+    this.agent.get('helperAgents').forEach(agent => {
+      agent.get('intents').forEach(intent => {
+        if (!intents.find(it => it.name === intent.name)) {
+          intents.push(Object.assign({}, intent, { agent }));
+        }
+      });
+    });
+    return intents;
   }
 }
 

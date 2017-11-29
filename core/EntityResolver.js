@@ -5,9 +5,11 @@ const log = require('debug')('RESOLVER:ENTITY_RESOLVER');
 require('dotenv-extended').load({ path: '../.env' });
 
 class EntityResolver {
+
   constructor({agent}) {
     this.agent = agent;
   }
+
   async recognizeFromInput(input) {
     log('recognize user input:', input);
     const modelIds = this.agent.get('helperModelIds');
@@ -32,6 +34,7 @@ class EntityResolver {
     }
     return null;
   }
+
   getTopScoredEntities(entities = []) {
     return entities.reduce((acc, it) => {
       const curr = acc.find(({type}) => type === it.type);
@@ -43,10 +46,12 @@ class EntityResolver {
       }
     }, []);
   }
+
   buildModelUrl(modelId) {
     const key = this.agent.get('deployKey');
     return `https://westus.api.cognitive.microsoft.com/luis/v2.0/apps/${modelId}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;
   }
+
   createRecognizer() {
     const recognizers = this.getHelperModelUrls().map(modelUrl => new builder.LuisRecognizer(modelUrl));
     console.log('EntityRecognizer.createRecognizer', recognizers);
@@ -55,6 +60,7 @@ class EntityResolver {
     });
     return recognizerSet;
   }
+
   getHelperModelUrls() {
     const modelIds = this.agent.get('helperModelIds');
     if (!isEmpty(modelIds)) {
@@ -62,6 +68,7 @@ class EntityResolver {
     }
     return [];
   }
+
   recognize(text) {
     const context = { message: { text } };
     this.createRecognizer().recognize(context, (err, result) => {

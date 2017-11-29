@@ -6,9 +6,11 @@ const inspector = require('schema-inspector');
 const Promise = require('bluebird');
 const BuiltInTypes = require('./builtin');
 const EntityResolver = require('./EntityResolver');
+const Recognizer = require('./Recognizer');
 const agent = require('./Agent');
 
 const entityResolver = new EntityResolver({agent});
+const recognizer = new Recognizer({agent});
 
 var Status = {
   NoActionRecognized: 'NoActionRecognized',
@@ -37,11 +39,8 @@ var EmptyActionModel = {
   parameterErrors: []
 };
 
-function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCreationHandler) {
+function evaluate(actions, currentActionModel, userInput, onContextCreationHandler) {
   log('evaluate action');
-  if (!modelUrl) {
-    throw new Error('modelUrl not set');
-  }
 
   actions.forEach(validateAction);
 
@@ -75,12 +74,7 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
       case Status.NoActionRecognized:
         // First time input, resolve to action
         log('recognize user input', actionModel.userInput);
-        builder.LuisRecognizer.recognize(actionModel.userInput, modelUrl, (err, intents, entities) => {
-
-          if (err) {
-            log('recognize error %s', err);
-            return reject(err);
-          }
+        recognizer.recognize(actionModel.userInput).then(({intents, entities}) => {
           log('recognize success');
           var action = chooseBestIntentAction(intents, actions);
           if (action) {
@@ -116,6 +110,9 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
             actionModel.status = Status.NoActionRecognized;
             resolve(actionModel);
           }
+        }).catch(err => {
+          log('recognize error %s', err);
+          return reject(err);
         });
         break;
 
@@ -135,14 +132,9 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
               tryExecute(action, actionModel).then(resolve).catch(reject);
             } else {
               log('no entities resolved, call main recognizer');
-              builder.LuisRecognizer.recognize(actionModel.userInput, modelUrl, (err, intents, entities) => {
+              recognizer.recognize(actionModel.userInput).then(({intents, entities}) => {
                 log('recognized intents:', intents);
                 log('recognized entities:', entities);
-                if (err) {
-                  log('recognize error');
-                  return reject(err);
-                }
-
                 var newAction = chooseBestIntentAction(intents, actions, action);
 
                 if (newAction && newAction.intentName !== action.intentName) {
@@ -194,6 +186,9 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
                 tryExecute(action, actionModel)
                   .then(resolve)
                   .catch(reject);
+              }).catch(err => {
+                log('recognize error %s', err);
+                return reject(err);
               });
             }
           });
@@ -214,7 +209,7 @@ function evaluate(modelUrl, actions, currentActionModel, userInput, onContextCre
 /*
  * Bot Stuff
  */
-function bindToBotDialog(bot, intentDialog, modelUrl, actions, options) {
+function bindToBotDialog(bot, intentDialog, actions, options) {
   log('binding actions to bot dialog');
   if (!bot) {
     throw new Error('bot is required');
@@ -223,9 +218,9 @@ function bindToBotDialog(bot, intentDialog, modelUrl, actions, options) {
     throw new Error('intentDialog is required');
   }
 
-  if (!modelUrl) {
-    throw new Error('ModelUrl is required');
-  }
+  // if (!modelUrl) {
+  //   throw new Error('ModelUrl is required');
+  // }
 
   options = options || {};
 
@@ -233,13 +228,13 @@ function bindToBotDialog(bot, intentDialog, modelUrl, actions, options) {
   bot.set('persistConversationData', true);
 
   // register dialog for handling input evaluation
-  bot.library(createBotLibrary(modelUrl, actions, options));
+  bot.library(createBotLibrary(actions, options));
 
   // Register each LuisActions with the intentDialog
   log('register actions');
   _.forEach(actions, function (action) {
     try {
-      intentDialog.matches(action.intentName, createBotAction(action, modelUrl));
+      intentDialog.matches(action.intentName, createBotAction(action));
     } catch (e) {
       //
     }
@@ -247,7 +242,7 @@ function bindToBotDialog(bot, intentDialog, modelUrl, actions, options) {
   });
 }
 
-function createBotLibrary(modelUrl, actions, options) {
+function createBotLibrary(actions, options) {
   var defaultReplyHandler = typeof options.defaultReply === 'function' ? options.defaultReply : function (session) { session.endDialog('Sorry, I couldn\'t understart that.'); };
   var fulfillReplyHandler = typeof options.fulfillReply === 'function' ? options.fulfillReply : function (session, actionModel) { session.endDialog(actionModel.result.toString()); };
   var onContextCreationHandler = validateContextCreationHandler(options.onContextCreation);
@@ -310,11 +305,11 @@ function createBotLibrary(modelUrl, actions, options) {
         // confirming context switch
         log('switch context confirmed');
         actionModel.confirmSwitch = true;
-        operation = evaluate(modelUrl, actions, actionModel);
+        operation = evaluate(actions, actionModel);
       } else if (args && args.response && actionModel.currentParameter) {
         // try evaluate new parameter
         log('try evaluate new parameter');
-        operation = evaluate(modelUrl, actions, actionModel, args.response);
+        operation = evaluate(actions, actionModel, args.response);
       } else {
         log('try validate with current parameters');
         // try validate with current parameters
@@ -371,7 +366,7 @@ function createBotLibrary(modelUrl, actions, options) {
   return lib;
 }
 
-function createBotAction(action, modelUrl) {
+function createBotAction(action) {
   validateAction(action);
 
   // trigger evaluation dialog

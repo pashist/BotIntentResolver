@@ -5,6 +5,7 @@ const restify = require('restify');
 const log = require('debug')('RESOLVER:APP');
 const LuisActions = require('./core');
 const ActionsBuilder = require('./core/ActionsBuilder');
+const Recognizer = require('./core/Recognizer');
 const agent =  require('./core/Agent');
 
 log('creating server');
@@ -24,12 +25,13 @@ server.post('/api/messages', connector.listen());
 async function init() {
   log('initializing bot');
   const actionsBuilder = new ActionsBuilder({agent});
+  const recognizer = new Recognizer({agent});
   await agent.load();
   const bot = new builder.UniversalBot(connector);
-  const LuisModelUrl = buildModelUrl(agent.get('modelId'), agent.get('deployKey'));
-  const recognizer = new builder.LuisRecognizer(LuisModelUrl);
   const intentDialog = bot
-    .dialog('/', new builder.IntentDialog({ recognizers: [recognizer] })
+    .dialog('/', new builder.IntentDialog({
+      recognizers: [recognizer.getRecognizer([Recognizer.TYPE_MAIN, Recognizer.TYPE_HELPER])]
+    })
       .onDefault(DefaultReplyHandler));
 
   const initActions = () => {
@@ -38,7 +40,7 @@ async function init() {
       .then(actions => {
         const num = actions.reduce((count, a) => count + Object.keys(a.schema).length, 0);
         log('actions loaded:', num);
-        LuisActions.bindToBotDialog(bot, intentDialog, LuisModelUrl, actions, {
+        LuisActions.bindToBotDialog(bot, intentDialog, actions, {
           defaultReply: DefaultReplyHandler,
           fulfillReply: FulfillReplyHandler,
           onContextCreation: onContextCreationHandler,
@@ -66,6 +68,11 @@ async function init() {
     }
   });
   log('`reloadActions` dialog added')
+
+  bot.on('error', err => {
+    console.log(err);
+    log('bot error: %s', err.message);
+  })
 }
 
 
