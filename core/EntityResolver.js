@@ -1,5 +1,6 @@
 const builder = require('botbuilder');
 const isEmpty = require('lodash/isEmpty');
+const get = require('lodash/get');
 const log = require('debug')('RESOLVER:ENTITY_RESOLVER');
 
 require('dotenv-extended').load({ path: '../.env' });
@@ -12,14 +13,18 @@ class EntityResolver {
 
   async recognizeFromInput(input) {
     log('recognize user input:', input);
-    const modelIds = this.agent.get('helperModelIds');
-    log('using model ids:', modelIds);
-    if (!isEmpty(modelIds)) {
-      const promises = modelIds.map(modelId => {
-        const modelUrl = this.buildModelUrl(modelId);
+    const models = this.agent.get('helperModels');
+    log('using model ids:', models.map(m => m.id));
+    if (!isEmpty(models)) {
+      const promises = models.map(model => {
+        const modelUrl = this.buildModelUrl(model);
         return new Promise(resolve => {
+          if (!modelUrl) {
+            return resolve({error: 'modelUrl is empty'})
+          }
           builder.LuisRecognizer.recognize(input, modelUrl, (error, intents, entities) => {
             if (error) {
+              log('recognize error:', error);
               resolve({error});
             }
             resolve({entities})
@@ -47,9 +52,25 @@ class EntityResolver {
     }, []);
   }
 
-  buildModelUrl(modelId) {
-    const key = this.agent.get('deployKey');
-    return `https://westus.api.cognitive.microsoft.com/luis/v2.0/apps/${modelId}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;
+  buildModelUrl(model) {
+    const id = model.id;
+    const key = model.apiKey;
+    const endpointRegion = get(model, 'productionSlot.endpointRegion');
+    if (!id) {
+      log('Build model url failed. Missing model id');
+      return false;
+    }
+    if (!key) {
+      log('Build model url failed. Missing apiKey for model id', model.id);
+      return false;
+    }
+    if (!endpointRegion) {
+      log('Build model url failed. Missing endpointRegion for model id', model.id);
+      return false;
+    }
+    const modelUrl = `https://${endpointRegion}.api.cognitive.microsoft.com/luis/v2.0/apps/${id}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;;
+    log('build url for model id %s: %s', model.id, modelUrl);
+    return modelUrl;
   }
 
   createRecognizer() {
@@ -62,9 +83,9 @@ class EntityResolver {
   }
 
   getHelperModelUrls() {
-    const modelIds = this.agent.get('helperModelIds');
+    const modelIds = this.agent.get('helperModels');
     if (!isEmpty(modelIds)) {
-      return modelIds.map(modelId => this.buildModelUrl(modelId));
+      return modelIds.map(modelId => this.buildModelUrl(model));
     }
     return [];
   }

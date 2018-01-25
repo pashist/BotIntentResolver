@@ -20,13 +20,28 @@ class Agent {
     log('loading data from graphql');
     if (force || !this.isLoaded) {
       const data = await this.client.request(`{
-        agent(id: "${this.agentId}") {
-          modelId
-          deployKey
-          helperModelIds
-          helperAgentIds
+        agent(agentId: "${this.agentId}") {
+          model {
+            id
+            apiKey
+            productionSlot { uri endpointRegion }
+          }
+          helperModels {
+            id
+            apiKey
+            productionSlot { uri endpointRegion }
+          }
+          helperAgents { id }
           intents {
-            id name parameters { name value required prompts dataType }
+            id
+            name
+            parameters {
+              name
+              value
+              required
+              prompts
+              dataType
+            }
             responses { 
               ... on TextResponse {
                 speech  
@@ -65,15 +80,18 @@ class Agent {
     if (this.isHelper) {
       return;
     }
-    const agents = (this.get('helperAgentIds') || [])
-      .map(id => new Agent({id}))
-      .map(agent => {agent.isHelper = true; return agent});
+    log('loading helper agents: ', this.get('helperAgents'));
+    const agents = (this.get('helperAgents') || [])
+      .map(({ id }) => new Agent({id}))
+      .map(agent => Object.assign(agent, { isHelper: true }));
     await Promise.all(agents.map(agent => agent.load()));
     this.data.helperAgents = agents;
   }
 
   getModelUrl() {
-    return `https://westus.api.cognitive.microsoft.com/luis/v2.0/apps/${this.data.modelId}?subscription-key=${this.data.deployKey}&timezoneOffset=0&verbose=true&q=`;
+    const modelUrl = `${this.data.model.productionSlot.uri}?subscription-key=${this.data.model.apiKey}&timezoneOffset=0&verbose=true&q=`;
+    log('main model url: %s', modelUrl);
+    return modelUrl;
   }
 }
 

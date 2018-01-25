@@ -1,5 +1,5 @@
 const builder = require('botbuilder');
-const isEmpty = require('lodash/isEmpty');
+const { isEmpty, get } = require('lodash');
 const log = require('debug')('RESOLVER:RECOGNIZER'); //todo all logging
 
 require('dotenv-extended').load({ path: '../.env' });
@@ -10,20 +10,36 @@ class Recognizer {
     this.agent = agent;
   }
 
-  buildModelUrl(modelId, subscriptionKey) {
-    const key = subscriptionKey || this.agent.get('deployKey');
-    const id = modelId || this.agent.get('modelId');
-    return `https://westus.api.cognitive.microsoft.com/luis/v2.0/apps/${id}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;
+  buildModelUrl(model) {
+    log('build url for model', model);
+    const id = model.id;
+    const key = model.apiKey;
+    const endpointRegion = get(model, 'productionSlot.endpointRegion');
+    if (!id) {
+      log('Build model url failed. Missing model id');
+      return false;
+    }
+    if (!key) {
+      log('Build model url failed. Missing apiKey for model id', model.id);
+      return false;
+    }
+    if (!endpointRegion) {
+      log('Build model url failed. Missing endpointRegion for model id', model.id);
+      return false;
+    }
+    const modelUrl = `https://${endpointRegion}.api.cognitive.microsoft.com/luis/v2.0/apps/${id}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;;
+    log('build url for model id %s: %s', model.id, modelUrl);
+    return modelUrl;
   }
 
   getModelUrls(type) {
     if (type === Recognizer.TYPE_MAIN) {
-      return [this.buildModelUrl()];
+      return [this.buildModelUrl(this.agent.get('model'))];
     }
     if (type === Recognizer.TYPE_ENTITY) {
-      const modelIds = this.agent.get('helperModelIds');
+      const modelIds = this.agent.get('helperModels');
       if (!isEmpty(modelIds)) {
-        return modelIds.map(modelId => this.buildModelUrl(modelId, key));
+        return modelIds.map(model => this.buildModelUrl(model));
       }
     } else if (type === Recognizer.TYPE_HELPER) {
       return this.agent.get('helperAgents').map(agent => agent.getModelUrl());
@@ -57,16 +73,17 @@ class Recognizer {
   }
 
   recognize(text, type = Recognizer.TYPE_MAIN) {
+    console.log(`Recognizer type ${type} recognize input:`, text);
     const context = { message: { text } };
     return new Promise((resolve, reject) => {
       const recognizer = this.getRecognizer(type);
       if (!recognizer) {
         return reject(new Error(`No recognizer found for type ${type}`));
       }
-      this.getRecognizer(type).recognize(context, (err, result) => {
-        console.log('EntityRecognizer.recognize', err, result);
+      recognizer.recognize(context, (err, result) => {
+        console.log(`Recognizer type ${type} recognize result:`, err, result);
         if (!err) {
-          resolve(result);
+          return resolve(result);
         } else {
           reject(err);
         }
