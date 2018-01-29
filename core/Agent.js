@@ -8,8 +8,9 @@ class Agent {
 
   constructor({ id } = {}) {
     log('creating Agent instance');
+    log('using graphql api url %s', process.env.API_URL);
     this.client = new GraphQLClient(process.env.API_URL, { headers: {} });
-    this.agentId = id || process.env.AGENT_ID;
+    this.agentId = id;
     this.data = {};
     this.isLoaded = false;
     this.isHelper = false;
@@ -19,8 +20,11 @@ class Agent {
   async load(force = false) {
     log('loading data from graphql');
     if (force || !this.isLoaded) {
+      const reqHead = this.agentId ?
+        `agent(agentId: "${this.agentId}")` :
+        `agentByAppName(appName: "${process.env.WEBSITE_SITE_NAME}")`;
       const data = await this.client.request(`{
-        agent(agentId: "${this.agentId}") {
+        ${reqHead} {
           model {
             id
             apiKey
@@ -65,10 +69,10 @@ class Agent {
           }
         }
       }`);
-      this.data = data.agent;
+      this.data = this.agentId ? data.agent : data.agentByAppName;
       await this.loadHelperAgents();
       this.isLoaded = true;
-      log('data loaded');
+      log('data loaded for agent id %s', this.data.id);
     }
   }
 
