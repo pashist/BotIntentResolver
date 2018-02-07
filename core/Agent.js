@@ -30,10 +30,10 @@ class Agent {
     if (force || !this.isLoaded) {
       const reqHead = this.agentId ?
         `agent(agentId: "${this.agentId}")` :
-        `agentByAppName(appName: "${appName}")`;
+        `agentByAppName(appName: "${this.appName}")`;
       this.agentId ?
         log('fetch agent by id %s', this.agentId) :
-        log('fetch agent by appName %s', appName);
+        log('fetch agent by appName %s', this.appName);
       const data = await this.client.request(`{
         ${reqHead} {
           model {
