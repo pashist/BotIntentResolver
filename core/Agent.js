@@ -1,6 +1,10 @@
 const { GraphQLClient } = require('graphql-request');
 const get = require('lodash/get');
 const log = require('debug')('RESOLVER:AGENT');
+const https = require("https");
+const agent = new https.Agent({
+  rejectUnauthorized: false
+});
 
 require('dotenv-extended').load({ path: '../.env' });
 
@@ -9,12 +13,16 @@ class Agent {
   constructor({ id } = {}) {
     log('creating Agent instance');
     log('using graphql api url %s', process.env.API_URL);
-    this.client = new GraphQLClient(process.env.API_URL, { headers: {} });
+    this.client = new GraphQLClient(process.env.API_URL, { headers: {}, agent });
     this.agentId = id;
+    this.appName = process.env.WEBSITE_SITE_NAME;
     this.data = {};
     this.isLoaded = false;
     this.isHelper = false;
-    log('Agent instance created [%s]', this.agentId);
+    if (!this.appName && !this.agentId) {
+      throw new Error('App name or agent id should be provided');
+    }
+    log('Agent instance created');
   }
 
   async load(force = false) {
@@ -22,7 +30,10 @@ class Agent {
     if (force || !this.isLoaded) {
       const reqHead = this.agentId ?
         `agent(agentId: "${this.agentId}")` :
-        `agentByAppName(appName: "${process.env.WEBSITE_SITE_NAME}")`;
+        `agentByAppName(appName: "${appName}")`;
+      this.agentId ?
+        log('fetch agent by id %s', this.agentId) :
+        log('fetch agent by appName %s', appName);
       const data = await this.client.request(`{
         ${reqHead} {
           model {
