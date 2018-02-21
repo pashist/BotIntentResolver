@@ -1,6 +1,6 @@
 {
   "name": "bot1",
-  "version": "1.0.0",
+  "version": "0.5.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -14,7 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "bluebird": "^3.5.1",
-    "botbuilder": "^3.11.0",
+    "botbuilder": "3.14.0",
     "debug": "^3.1.0",
     "dotenv-extended": "^2.0.1",
     "graphql-request": "^1.4.0",
