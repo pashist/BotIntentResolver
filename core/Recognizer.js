@@ -16,16 +16,13 @@ class Recognizer {
     const key = model.apiKey;
     const endpointRegion = get(model, 'productionSlot.endpointRegion');
     if (!id) {
-      log('Build model url failed. Missing model id');
-      return false;
+      throw new Error(`Build model url failed. Missing model id`);
     }
     if (!key) {
-      log('Build model url failed. Missing apiKey for model id', model.id);
-      return false;
+      throw new Error(`Build model url failed. Missing apiKey for model id: ${id}`);
     }
     if (!endpointRegion) {
-      log('Build model url failed. Missing endpointRegion for model id', model.id);
-      return false;
+      throw new Error(`Build model url failed. Missing endpointRegion for model id: ${id}`);
     }
     const modelUrl = `https://${endpointRegion}.api.cognitive.microsoft.com/luis/v2.0/apps/${id}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;;
     log('build url for model id %s: %s', model.id, modelUrl);
