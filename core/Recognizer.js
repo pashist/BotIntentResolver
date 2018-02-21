@@ -42,7 +42,7 @@ class Recognizer {
         return modelIds.map(model => this.buildModelUrl(model));
       }
     } else if (type === Recognizer.TYPE_HELPER) {
-      return this.agent.get('helperAgents').map(agent => agent.getModelUrl());
+      return this.agent.get('helperAgents').map(agent => this.buildModelUrl(agent.get('model')));
     }
 
     return [];

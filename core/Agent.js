@@ -50,6 +50,8 @@ class Agent {
           intents {
             id
             name
+            action
+            useWebhook
             parameters {
               name
               value
@@ -102,12 +104,12 @@ class Agent {
     await Promise.all(agents.map(agent => agent.load()));
     this.data.helperAgents = agents;
   }
-
-  getModelUrl() {
-    const modelUrl = `${this.data.model.productionSlot.uri}?subscription-key=${this.data.model.apiKey}&timezoneOffset=0&verbose=true&q=`;
-    log('main model url: %s', modelUrl);
-    return modelUrl;
-  }
+  //
+  // getModelUrl() {
+  //   const modelUrl = `${this.data.model.productionSlot.uri}?subscription-key=${this.data.model.apiKey}&timezoneOffset=0&verbose=true&q=`;
+  //   log('main model url: %s', modelUrl);
+  //   return modelUrl;
+  // }
 }
 
 module.exports = new Agent();
