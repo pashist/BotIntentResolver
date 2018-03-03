@@ -80,6 +80,17 @@ class Agent {
               }
             }
           }
+          webhook {
+            url
+            basicAuth {
+              username
+              password
+            }
+            headers {
+              key
+              value
+            }
+          }
         }
       }`);
       this.data = this.agentId ? data.agent : data.agentByAppName;

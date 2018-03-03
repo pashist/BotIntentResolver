@@ -1,6 +1,7 @@
 const isEmpty = require('lodash/isEmpty');
 const log = require('debug')('RESOLVER:ACTION_BUILDER');
 const ResponsePicker = require('./Responses');
+const Webhook = require('./WebHook');
 
 require('dotenv-extended').load({ path: '../.env' });
 
@@ -20,17 +21,37 @@ class ActionsBuilder {
         confirmOnContextSwitch: true,
         schema: this.createSchemaFromParams(intent.parameters),
         fulfill: (parameters, callback) => {
+          log('handle fulfill callback');
           const responsePicker = new ResponsePicker({
             agent: intent.agent || this.agent,
             intentName: intent.name,
             parameters
           });
-          const response = responsePicker.pick();
-          if (response) {
-            callback(response);
+          const webhook = new Webhook({
+            agent: intent.agent || this.agent,
+          });
+          if (intent.useWebhook && webhook.isExists()) {
+            log('using webhook');
+            webhook.call({ intent, parameters })
+              .then(response => {
+                log('received response from webhook url', response);
+                callback(response.fulfillText);
+              })
+              .catch(err => {
+                log('webhook call error', err);
+                callback(`Webhook call error: ${err.message}`)
+              })
           } else {
-            const paramStr = Object.keys(parameters).map(key => `${key}: ${parameters[key]}`).join(',');
-            callback(`Intent ${intent.name} resolved with params: ${paramStr}`)
+            log('pick response');
+            const response = responsePicker.pick();
+            if (response) {
+              log('response found');
+              callback(response);
+            } else {
+              log('response not found, using default');
+              const paramStr = Object.keys(parameters).map(key => `${key}: ${parameters[key]}`).join(',');
+              callback(`Intent ${intent.name} resolved with params: ${paramStr}`)
+            }
           }
         }
       })
