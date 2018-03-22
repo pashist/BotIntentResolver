@@ -123,4 +123,4 @@ class Agent {
   // }
 }
 
-module.exports = new Agent();
+module.exports = new Agent({ id: process.env.AGENT_ID });

@@ -14,11 +14,14 @@
   "license": "ISC",
   "dependencies": {
     "bluebird": "^3.5.1",
+    "botauth": "^0.2.12",
     "botbuilder": "3.14.0",
     "debug": "^3.1.0",
     "dotenv-extended": "^2.0.1",
     "graphql-request": "^1.4.0",
     "lodash": "^4.17.4",
+    "passport": "^0.4.0",
+    "passport-facebook": "^2.1.1",
     "request-promise": "^4.2.2",
     "restify": "^6.2.3",
     "schema-inspector": "^1.6.8"

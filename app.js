@@ -6,6 +6,7 @@ const log = require('debug')('RESOLVER:APP');
 const LuisActions = require('./core');
 const ActionsBuilder = require('./core/ActionsBuilder');
 const Recognizer = require('./core/Recognizer');
+const BotAuth = require('./core/BotAuth');
 const agent =  require('./core/Agent');
 
 log('creating server');
@@ -28,6 +29,7 @@ async function init() {
   const recognizer = new Recognizer({agent});
   await agent.load();
   const bot = new builder.UniversalBot(connector);
+  const botAuth = new BotAuth({ server, bot });
   const intentDialog = bot
     .dialog('/', new builder.IntentDialog({
       recognizers: [recognizer.getRecognizer([Recognizer.TYPE_MAIN, Recognizer.TYPE_HELPER])]
@@ -67,7 +69,54 @@ async function init() {
       session.beginDialog(args.action, args);
     }
   });
-  log('`reloadActions` dialog added')
+  log('`reloadActions` dialog added');
+
+
+  bot.dialog("fbProfile", [].concat(
+    botAuth.authenticate("facebook"),
+    function(session, results) {
+      //get the facebook profile
+      var user = botAuth.profile(session, "facebook");
+      //var user = results.response;
+
+      //call facebook and get something using user.accessToken
+      var client = restify.createJsonClient({
+        url: 'https://graph.facebook.com',
+        accept : 'application/json',
+        headers : {
+          "Authorization" : `OAuth ${ user.accessToken }`
+        }
+      });
+
+      client.get(`/v2.8/me/picture?redirect=0`, (err, req, res, obj) => {
+        if(!err) {
+          console.log(obj);
+          var msg = new builder.Message()
+            .attachments([
+                new builder.HeroCard(session)
+                  .text(user.displayName)
+                  .images([
+                      new builder.CardImage(session).url(obj.data.url)
+                    ]
+                  )
+              ]
+            );
+          session.endDialog(msg);
+        } else {
+          console.log(err);
+          session.endDialog("error getting profile");
+        }
+      });
+    }
+  )).triggerAction({
+    matches: /^facebook profile$/i,
+    onSelectAction: (session, args, next) => {
+      // Add the help dialog to the top of the dialog stack
+      // (override the default behavior of replacing the stack)
+      session.beginDialog(args.action, args);
+    }
+  });;
+
 
   bot.on('error', err => {
     console.log(err);
@@ -121,8 +170,4 @@ function onContextCreationHandler(action, actionModel, next, session) {
   // }
 
   next();
-}
-
-function buildModelUrl(modelId, key) {
-  return `https://westus.api.cognitive.microsoft.com/luis/v2.0/apps/${modelId}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;
 }
