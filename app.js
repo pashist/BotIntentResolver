@@ -2,6 +2,8 @@ require('dotenv-extended').load({ path: './.env' });
 
 const builder = require('botbuilder');
 const restify = require('restify');
+const restifyClients = require('restify-clients');
+
 const log = require('debug')('RESOLVER:APP');
 const LuisActions = require('./core');
 const ActionsBuilder = require('./core/ActionsBuilder');
@@ -11,6 +13,9 @@ const agent =  require('./core/Agent');
 
 log('creating server');
 const server = restify.createServer();
+server.use(restify.plugins.bodyParser());
+server.use(restify.plugins.queryParser());
+
 log('starting %s server', server.name);
 server.listen(process.env.port || process.env.PORT || 3978, function () {
   log('%s listening to %s', server.name, server.url);
@@ -25,16 +30,21 @@ server.post('/api/messages', connector.listen());
 
 async function init() {
   log('initializing bot');
-  const actionsBuilder = new ActionsBuilder({agent});
-  const recognizer = new Recognizer({agent});
-  await agent.load();
   const bot = new builder.UniversalBot(connector);
   const botAuth = new BotAuth({ server, bot });
+  const actionsBuilder = new ActionsBuilder({ agent, botAuth });
+  const recognizer = new Recognizer({ agent });
+  await agent.load();
   const intentDialog = bot
     .dialog('/', new builder.IntentDialog({
       recognizers: [recognizer.getRecognizer([Recognizer.TYPE_MAIN, Recognizer.TYPE_HELPER])]
     })
-      .onDefault(DefaultReplyHandler));
+      .onDefault(DefaultReplyHandler)
+      .onBegin((session, args, next) => {
+        //session.send(JSON.stringify(session.message.user));
+        next();
+      })
+    );
 
   const initActions = () => {
     log('initializing actions');
@@ -46,6 +56,7 @@ async function init() {
           defaultReply: DefaultReplyHandler,
           fulfillReply: FulfillReplyHandler,
           onContextCreation: onContextCreationHandler,
+          botAuth,
         });
         return `Loaded ${num} actions`;
       })
@@ -62,7 +73,7 @@ async function init() {
       initActions().then(msg => session.endDialog(msg));
     })
   }).triggerAction({
-    matches: /^reload actions$/i,
+    matches: /^reload bot$/i,
     onSelectAction: (session, args, next) => {
       // Add the help dialog to the top of the dialog stack
       // (override the default behavior of replacing the stack)
@@ -70,53 +81,6 @@ async function init() {
     }
   });
   log('`reloadActions` dialog added');
-
-
-  bot.dialog("fbProfile", [].concat(
-    botAuth.authenticate("facebook"),
-    function(session, results) {
-      //get the facebook profile
-      var user = botAuth.profile(session, "facebook");
-      //var user = results.response;
-
-      //call facebook and get something using user.accessToken
-      var client = restify.createJsonClient({
-        url: 'https://graph.facebook.com',
-        accept : 'application/json',
-        headers : {
-          "Authorization" : `OAuth ${ user.accessToken }`
-        }
-      });
-
-      client.get(`/v2.8/me/picture?redirect=0`, (err, req, res, obj) => {
-        if(!err) {
-          console.log(obj);
-          var msg = new builder.Message()
-            .attachments([
-                new builder.HeroCard(session)
-                  .text(user.displayName)
-                  .images([
-                      new builder.CardImage(session).url(obj.data.url)
-                    ]
-                  )
-              ]
-            );
-          session.endDialog(msg);
-        } else {
-          console.log(err);
-          session.endDialog("error getting profile");
-        }
-      });
-    }
-  )).triggerAction({
-    matches: /^facebook profile$/i,
-    onSelectAction: (session, args, next) => {
-      // Add the help dialog to the top of the dialog stack
-      // (override the default behavior of replacing the stack)
-      session.beginDialog(args.action, args);
-    }
-  });;
-
 
   bot.on('error', err => {
     console.log(err);
@@ -134,7 +98,7 @@ function DefaultReplyHandler(session) {
 
 function FulfillReplyHandler(session, actionModel) {
   log('call FulfillReplyHandler');
-  log('Action Binding "' + actionModel.intentName + '" completed:', actionModel);
+  log('Action Binding "' + actionModel.intentName + '" completed:'/*, actionModel*/);
   session.endDialog(actionModel.result.toString());
 }
 

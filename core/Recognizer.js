@@ -39,7 +39,8 @@ class Recognizer {
         return modelIds.map(model => this.buildModelUrl(model));
       }
     } else if (type === Recognizer.TYPE_HELPER) {
-      return this.agent.get('helperAgents').map(agent => this.buildModelUrl(agent.get('model')));
+      const helperAgents = this.agent.get('helperAgents') || [];
+      return helperAgents.map(agent => this.buildModelUrl(agent.model));
     }
 
     return [];

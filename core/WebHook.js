@@ -18,7 +18,7 @@ class WebHook {
     return !!this.agent.get('webhook.url');
   }
 
-  async call({ intent, parameters }) {
+  async call({ intent, parameters, user }) {
     if (!this.isExists()) {
       log('webhook url not defined');
       return false;
@@ -28,10 +28,7 @@ class WebHook {
     const opts = {
       method: 'POST',
       uri: webhook.url,
-      body: {
-        intent: intent,
-        parameters: parameters,
-      },
+      body: { intent, parameters, user },
       json: true,
     };
     if (webhook.basicAuth && webhook.basicAuth.username) {
