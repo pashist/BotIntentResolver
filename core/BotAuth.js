@@ -9,7 +9,7 @@ class BotAuth {
   constructor({ server, bot }) {
     log('create instance');
     this.ba = new botauth.BotAuthenticator(server, bot, {
-      baseUrl : process.env.WEBSITE_HOSTNAME || `https://${process.env.BotId}.azurewebsites.net`,
+      baseUrl : process.env.WEBSITE_URL || `https://${process.env.WEBSITE_HOSTNAME}`,
       secret : 'some@sec'
     });
     this.init();
