@@ -2,14 +2,20 @@ require('dotenv-extended').load({ path: './.env' });
 
 const builder = require('botbuilder');
 const restify = require('restify');
+const restifyClients = require('restify-clients');
+
 const log = require('debug')('RESOLVER:APP');
 const LuisActions = require('./core');
 const ActionsBuilder = require('./core/ActionsBuilder');
 const Recognizer = require('./core/Recognizer');
+const BotAuth = require('./core/BotAuth');
 const agent =  require('./core/Agent');
 
 log('creating server');
 const server = restify.createServer();
+server.use(restify.plugins.bodyParser());
+server.use(restify.plugins.queryParser());
+
 log('starting %s server', server.name);
 server.listen(process.env.port || process.env.PORT || 3978, function () {
   log('%s listening to %s', server.name, server.url);
@@ -24,15 +30,21 @@ server.post('/api/messages', connector.listen());
 
 async function init() {
   log('initializing bot');
-  const actionsBuilder = new ActionsBuilder({agent});
-  const recognizer = new Recognizer({agent});
-  await agent.load();
   const bot = new builder.UniversalBot(connector);
+  const botAuth = new BotAuth({ server, bot });
+  const actionsBuilder = new ActionsBuilder({ agent, botAuth });
+  const recognizer = new Recognizer({ agent });
+  await agent.load();
   const intentDialog = bot
     .dialog('/', new builder.IntentDialog({
       recognizers: [recognizer.getRecognizer([Recognizer.TYPE_MAIN, Recognizer.TYPE_HELPER])]
     })
-      .onDefault(DefaultReplyHandler));
+      .onDefault(DefaultReplyHandler)
+      .onBegin((session, args, next) => {
+        //session.send(JSON.stringify(session.message.user));
+        next();
+      })
+    );
 
   const initActions = () => {
     log('initializing actions');
@@ -44,6 +56,7 @@ async function init() {
           defaultReply: DefaultReplyHandler,
           fulfillReply: FulfillReplyHandler,
           onContextCreation: onContextCreationHandler,
+          botAuth,
         });
         return `Loaded ${num} actions`;
       })
@@ -60,14 +73,14 @@ async function init() {
       initActions().then(msg => session.endDialog(msg));
     })
   }).triggerAction({
-    matches: /^reload actions$/i,
+    matches: /^reload bot$/i,
     onSelectAction: (session, args, next) => {
       // Add the help dialog to the top of the dialog stack
       // (override the default behavior of replacing the stack)
       session.beginDialog(args.action, args);
     }
   });
-  log('`reloadActions` dialog added')
+  log('`reloadActions` dialog added');
 
   bot.on('error', err => {
     console.log(err);
@@ -85,7 +98,7 @@ function DefaultReplyHandler(session) {
 
 function FulfillReplyHandler(session, actionModel) {
   log('call FulfillReplyHandler');
-  log('Action Binding "' + actionModel.intentName + '" completed:', actionModel);
+  log('Action Binding "' + actionModel.intentName + '" completed:'/*, actionModel*/);
   session.endDialog(actionModel.result.toString());
 }
 
@@ -121,8 +134,4 @@ function onContextCreationHandler(action, actionModel, next, session) {
   // }
 
   next();
-}
-
-function buildModelUrl(modelId, key) {
-  return `https://westus.api.cognitive.microsoft.com/luis/v2.0/apps/${modelId}?subscription-key=${key}&timezoneOffset=0&verbose=true&q=`;
 }

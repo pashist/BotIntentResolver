@@ -1,12 +1,14 @@
 const isEmpty = require('lodash/isEmpty');
 const log = require('debug')('RESOLVER:ACTION_BUILDER');
 const ResponsePicker = require('./Responses');
+const Webhook = require('./WebHook');
 
 require('dotenv-extended').load({ path: '../.env' });
 
 class ActionsBuilder {
-  constructor({agent}) {
+  constructor({ agent, botAuth }) {
     this.agent = agent;
+    this.botAuth = botAuth;
   }
 
   async build() {
@@ -17,20 +19,43 @@ class ActionsBuilder {
       actions.push({
         intentName: intent.name,
         friendlyName: intent.name,
+        authRequired: intent.authRequired,
         confirmOnContextSwitch: true,
         schema: this.createSchemaFromParams(intent.parameters),
-        fulfill: (parameters, callback) => {
+        fulfill: (parameters, session, callback) => {
+          log('handle fulfill callback');
           const responsePicker = new ResponsePicker({
             agent: intent.agent || this.agent,
             intentName: intent.name,
             parameters
           });
-          const response = responsePicker.pick();
-          if (response) {
-            callback(response);
+          const webhook = new Webhook({
+            agent: intent.agent || this.agent,
+          });
+          const user = intent.authRequired ? this.botAuth.profile(session, 'facebook') : {};
+
+          if (intent.useWebhook && webhook.isExists()) {
+            log('using webhook');
+            webhook.call({ intent, parameters, user })
+              .then(response => {
+                log('received response from webhook url', response);
+                callback(response.message);
+              })
+              .catch(err => {
+                log('webhook call error', err);
+                callback(`Webhook call error: ${err.message}`)
+              })
           } else {
-            const paramStr = Object.keys(parameters).map(key => `${key}: ${parameters[key]}`).join(',');
-            callback(`Intent ${intent.name} resolved with params: ${paramStr}`)
+            log('pick response');
+            const response = responsePicker.pick();
+            if (response) {
+              log('response found');
+              callback(response);
+            } else {
+              log('response not found, using default');
+              const paramStr = Object.keys(parameters).map(key => `${key}: ${parameters[key]}`).join(',');
+              callback(`Intent ${intent.name} resolved with params: ${paramStr}`)
+            }
           }
         }
       })
@@ -59,13 +84,19 @@ class ActionsBuilder {
 
   getIntents() {
     const intents = this.agent.get('intents');
-    this.agent.get('helperAgents').forEach(agent => {
-      agent.get('intents').forEach(intent => {
-        if (!intents.find(it => it.name === intent.name)) {
-          intents.push(Object.assign({}, intent, { agent }));
+    const helperAgents = this.agent.get('helperAgents');
+
+    if (!isEmpty(helperAgents)) {
+      helperAgents.forEach(agent => {
+        if (!isEmpty(agent.intents)) {
+          agent.intent.forEach(intent => {
+            if (!intents.find(it => it.name === intent.name)) {
+              intents.push(Object.assign({}, intent, { agent }));
+            }
+          })
         }
       });
-    });
+    }
     return intents;
   }
 }

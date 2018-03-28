@@ -39,7 +39,7 @@ var EmptyActionModel = {
   parameterErrors: []
 };
 
-function evaluate(actions, currentActionModel, userInput, onContextCreationHandler) {
+function evaluate(session, actions, currentActionModel, userInput, onContextCreationHandler) {
   log('evaluate action');
 
   actions.forEach(validateAction);
@@ -91,7 +91,7 @@ function evaluate(actions, currentActionModel, userInput, onContextCreationHandl
 
             var next = function () {
               // Run validation
-              tryExecute(action, actionModel)
+              tryExecute(session, action, actionModel)
                 .then(resolve)
                 .catch(reject);
             };
@@ -129,10 +129,10 @@ function evaluate(actions, currentActionModel, userInput, onContextCreationHandl
             if (!_.isEmpty(foundEntities)) {
               const parameters = extractParametersFromEntities(action.schema, foundEntities, actionModel);
               actionModel.parameters = _.merge({}, actionModel.parameters, parameters);
-              tryExecute(action, actionModel).then(resolve).catch(reject);
+              tryExecute(session, action, actionModel).then(resolve).catch(reject);
             } else {
               log('no entities resolved, call main recognizer');
-              recognizer.recognize(actionModel.userInput).then(({intents, entities}) => {
+              recognizer.recognize(actionModel.userInput).then(({ intents, entities }) => {
                 log('recognized intents:', intents);
                 log('recognized entities:', entities);
                 var newAction = chooseBestIntentAction(intents, actions, action);
@@ -176,14 +176,14 @@ function evaluate(actions, currentActionModel, userInput, onContextCreationHandl
                     actionModel.currentParameter = null;
                   }
                 }
-                const parameters = extractParametersFromEntities(action.schema, foundEntities, actionModel);
+                const parameters = extractParametersFromEntities(action.schema, entities, actionModel);
 
                 // merge new identified parameters from entites
                 log('merge new identified parameters from entites');
                 actionModel.parameters = _.merge({}, actionModel.parameters, parameters);
 
                 // Run validation
-                tryExecute(action, actionModel)
+                tryExecute(session, action, actionModel)
                   .then(resolve)
                   .catch(reject);
               }).catch(err => {
@@ -194,7 +194,7 @@ function evaluate(actions, currentActionModel, userInput, onContextCreationHandl
           });
         } else {
           // Run validation with current model
-          tryExecute(action, actionModel)
+          tryExecute(session, action, actionModel)
             .then(resolve)
             .catch(reject);
         }
@@ -234,7 +234,7 @@ function bindToBotDialog(bot, intentDialog, actions, options) {
   log('register actions');
   _.forEach(actions, function (action) {
     try {
-      intentDialog.matches(action.intentName, createBotAction(action));
+      intentDialog.matches(action.intentName, createBotAction(action, options.botAuth));
     } catch (e) {
       //
     }
@@ -250,6 +250,8 @@ function createBotLibrary(actions, options) {
   var lib = new builder.Library('LuisActions');
   lib.dialog('Evaluate', new builder.SimpleDialog(function (session, args) {
     log('start new conversation');
+    console.log('args', args)
+    console.log('session', session.user)
     var actionModel = null;
     var action = null;
     if (args && args.intents) {
@@ -305,15 +307,15 @@ function createBotLibrary(actions, options) {
         // confirming context switch
         log('switch context confirmed');
         actionModel.confirmSwitch = true;
-        operation = evaluate(actions, actionModel);
+        operation = evaluate(session, actions, actionModel);
       } else if (args && args.response && actionModel.currentParameter) {
         // try evaluate new parameter
         log('try evaluate new parameter');
-        operation = evaluate(actions, actionModel, args.response);
+        operation = evaluate(session, actions, actionModel, args.response);
       } else {
         log('try validate with current parameters');
         // try validate with current parameters
-        operation = tryExecute(action, actionModel);
+        operation = tryExecute(session, action, actionModel);
       }
 
       log('executing async operation');
@@ -335,6 +337,7 @@ function createBotLibrary(actions, options) {
             actionModel.currentParameter = firstError.parameterName;
             session.privateConversationData['luisaction.model'] = actionModel;
             log('prompt user for parameter %s', actionModel.currentParameter);
+            console.log(firstError.message);
             builder.Prompts.text(session, firstError.message);
             break;
 
@@ -357,6 +360,7 @@ function createBotLibrary(actions, options) {
         }
       }).catch((err) => {
         // error ocurred
+        console.log(err);
         log('handle dialog error %s', err);
         session.endDialog('Error: %s', err);
       });
@@ -366,13 +370,25 @@ function createBotLibrary(actions, options) {
   return lib;
 }
 
-function createBotAction(action) {
+function createBotAction(action, botAuth) {
   validateAction(action);
 
   // trigger evaluation dialog
-  return function (session, dialogArgs) {
-    session.beginDialog('LuisActions:Evaluate', dialogArgs);
+
+  let initialArgs = {};
+  const first = (session, dialogArgs, next) => {
+    initialArgs = Object.assign({}, dialogArgs);
+    next(dialogArgs);
   };
+  const main = (session, dialogArgs) =>
+    session.beginDialog('LuisActions:Evaluate', Object.assign(dialogArgs, initialArgs));
+
+
+
+  if (action.authRequired) {
+    return [].concat(first, botAuth.authenticate("facebook"), main);
+  }
+  return main;
 }
 
 /*
@@ -458,7 +474,7 @@ function extractParametersFromEntities(schema, entities, actionModel) {
   return parameters;
 }
 
-function tryExecute(action, actionModel) {
+function tryExecute(session, action, actionModel) {
   log('trying to validate and execute action');
   return new Promise(function (resolve, reject) {
     try {
@@ -474,7 +490,7 @@ function tryExecute(action, actionModel) {
           log('all params resolved');
           // fulfill and return response to callback
           var parentContext = actionModel.contextModel;
-          action.fulfill(completeParameters, (fulfillResult) => {
+          action.fulfill(completeParameters, session, (fulfillResult) => {
             actionModel.status = Status.Fulfilled;
             actionModel.result = fulfillResult;
             actionModel.parameters = completeParameters;
@@ -485,7 +501,7 @@ function tryExecute(action, actionModel) {
               actionModel.contextModel.subcontextResult = actionModel.result;
               actionModel = actionModel.contextModel;
 
-              tryExecute(action.parentAction, actionModel)
+              tryExecute(session, action.parentAction, actionModel)
                 .then(resolve)
                 .catch(reject);
             } else {
