@@ -29,7 +29,6 @@
     "passport-facebook": "^2.1.1",
     "request-promise": "^4.2.2",
     "restify": "^6.2.3",
-    "restify-clients": "^2.0.0",
     "schema-inspector": "^1.6.8"
   }
 }

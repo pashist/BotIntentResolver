@@ -2,7 +2,6 @@ require('dotenv-extended').load({ path: './.env' });
 
 const builder = require('botbuilder');
 const restify = require('restify');
-const restifyClients = require('restify-clients');
 const expressSession = require('express-session');
 
 const log = require('debug')('RESOLVER:APP');
