@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node app",
+    "start": "nodemon app.js -e js,json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "engines": {
@@ -18,9 +18,14 @@
     "botbuilder": "^3.14.1",
     "debug": "^3.1.0",
     "dotenv-extended": "^2.0.1",
+    "express-session": "^1.15.6",
     "graphql-request": "^1.4.0",
+    "jsonwebtoken": "^8.2.0",
     "lodash": "^4.17.4",
+    "nodemon": "^1.17.2",
     "passport": "^0.4.0",
+    "passport-azure-ad": "^3.0.12",
+    "passport-azure-ad-oauth2": "0.0.4",
     "passport-facebook": "^2.1.1",
     "request-promise": "^4.2.2",
     "restify": "^6.2.3",

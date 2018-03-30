@@ -3,6 +3,7 @@ require('dotenv-extended').load({ path: './.env' });
 const builder = require('botbuilder');
 const restify = require('restify');
 const restifyClients = require('restify-clients');
+const expressSession = require('express-session');
 
 const log = require('debug')('RESOLVER:APP');
 const LuisActions = require('./core');
@@ -15,6 +16,7 @@ log('creating server');
 const server = restify.createServer();
 server.use(restify.plugins.bodyParser());
 server.use(restify.plugins.queryParser());
+server.use(expressSession({ secret: process.env.BOTAUTH_SECRET, resave: true, saveUninitialized: false }));
 
 log('starting %s server', server.name);
 server.listen(process.env.port || process.env.PORT || 3978, function () {

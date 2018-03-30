@@ -137,7 +137,9 @@ function evaluate(session, actions, currentActionModel, userInput, onContextCrea
                 log('recognized entities:', entities);
                 var newAction = chooseBestIntentAction(intents, actions, action);
 
-                if (newAction && newAction.intentName !== action.intentName) {
+                //todo see how this condition will perform
+                //added isEmpty entities check for prevent intent switching if some entity recognized
+                if (_.isEmpty(entities) && newAction && newAction.intentName !== action.intentName) {
                   log('new action is different from current');
                   if (isGetterAction(newAction)) {
 
@@ -380,13 +382,14 @@ function createBotAction(action, botAuth) {
     initialArgs = Object.assign({}, dialogArgs);
     next(dialogArgs);
   };
-  const main = (session, dialogArgs) =>
-    session.beginDialog('LuisActions:Evaluate', Object.assign(dialogArgs, initialArgs));
+  const main = (session, dialogArgs) => {
+    return session.beginDialog('LuisActions:Evaluate', Object.assign(dialogArgs, initialArgs));
+  };
 
 
 
   if (action.authRequired) {
-    return [].concat(first, botAuth.authenticate("facebook"), main);
+    return [].concat(first, botAuth.authenticate(process.env.BOTAUTH_PROVIDER), main);
   }
   return main;
 }
@@ -422,8 +425,8 @@ function chooseBestIntentAction(intents, actions, currentAction) {
 }
 
 function extractParametersFromEntities(schema, entities, actionModel) {
-  log('extracting parameters from entities', entities);
-  // when evaluating a specific parameter, try matching it by its custom type, then name and finally builin type
+  log('extracting parameters from entities', JSON.stringify(entities, null, 2));
+  // when evaluating a specific parameter, try matching it by its custom type, then name and finally builtin type
   if (actionModel && actionModel.currentParameter && schema[actionModel.currentParameter]) {
     var currentParameterSchema = schema[actionModel.currentParameter];
     var entity = null;
@@ -455,7 +458,7 @@ function extractParametersFromEntities(schema, entities, actionModel) {
 
   // resolve complete parameters from entities
   entities = crossMatchEntities(entities);
-
+  log('entity', JSON.stringify(entity, null, 2));
   // merge entities into parameters obj
   var parameters = _.reduce(entities, function (merged, entity) {
     merged[entity.type] = entity.entity;
@@ -465,12 +468,13 @@ function extractParametersFromEntities(schema, entities, actionModel) {
   // validate and remove those parameters marked as invalid
   var schemaObject = wrap(schema);
   inspector.sanitize(schemaObject, parameters);
+  log('merged params:', JSON.stringify(parameters, null, 2));
   var result = inspector.validate(schemaObject, parameters);
   if (!result.valid) {
     var invalidParameterNames = result.error.map(getParameterName);
     parameters = _.omit(parameters, invalidParameterNames);
   }
-  log('resolved params:', parameters);
+  log('resolved params:', JSON.stringify(parameters, null, 2));
   return parameters;
 }
 
