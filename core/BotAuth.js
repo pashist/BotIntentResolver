@@ -82,7 +82,7 @@ class BotAuth {
         redirectUrl: options.callbackURL, //  redirect: /botauth/aadv2/callback
         realm: 'common',
         clientID: process.env.AADV2_APP_ID,
-        clientSecret: process.env.AADV2_APP_PASSWORD,
+        clientSecret: process.env.AADV2_APP_SECRET,
         identityMetadata: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
         skipUserProfile: false,
         validateIssuer: false,
