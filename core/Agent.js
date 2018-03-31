@@ -23,7 +23,7 @@ class Agent {
     if (!this.agentKey) {
       throw new Error('Missing required parameter \'agentKey\'');
     }
-    log('Agent instance created');
+    log('Agent instance created, agentKey: %', agentKey);
   }
 
   async load(force = false) {
@@ -146,6 +146,9 @@ class Agent {
         }
       }`);
       this.data = data.agentByKey;
+      if (!this.data) {
+        throw new Error('Agent not found');
+      }
       this.isLoaded = true;
       log('data loaded for agent id %s', this.data.id);
     }
