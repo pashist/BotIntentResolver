@@ -32,7 +32,7 @@ class ActionsBuilder {
           const webhook = new Webhook({
             agent: intent.agent || this.agent,
           });
-          const user = intent.authRequired ? this.botAuth.profile(session, 'facebook') : {};
+          const user = intent.authRequired ? this.botAuth.profile(session, process.env.BOTAUTH_PROVIDER) : {};
 
           if (intent.useWebhook && webhook.isExists()) {
             log('using webhook');
@@ -74,12 +74,37 @@ class ActionsBuilder {
       }
       const message = isEmpty(param.prompts) ? [`Please provide the ${param.name}`] : param.prompts;
       schema[entityName] = {
-        type: 'string',
+        type: this.getEntityType(entityName),
         message
       }
     });
 
     return schema;
+  }
+
+  getEntityType(name) {
+    const entities = this.agent.get('entities') || [];
+    const entity = entities.find(e => e.name === name);
+    if (entity) {
+      switch (+entity.typeId) {
+        case 2:
+          return this.getBuiltInEntityType(entity.name);
+        default:
+          return 'string';
+      }
+    }
+    return 'string';
+  }
+
+  getBuiltInEntityType(name) {
+    switch (name) {
+      case 'datetimeV2':
+        return 'array';
+      case 'datetime':
+        return 'object';
+      default:
+        return 'string';
+    }
   }
 
   getIntents() {

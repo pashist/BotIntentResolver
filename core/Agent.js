@@ -139,6 +139,10 @@ class Agent {
               value
             }
           }
+          entities {
+            typeId
+            name
+          }
         }
       }`);
       this.data = data.agentByKey;
